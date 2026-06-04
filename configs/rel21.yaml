@@ -1,0 +1,5 @@
+routes:
+  - trigger: UE_REGISTRATION
+    priority: 10
+    applet_path: ../applets/rel21_identity.wat
+    action_on_mismatch: REJECT
