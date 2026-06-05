@@ -8,14 +8,41 @@ It simulates three network functions:
 - An intermediate NF forwards data it does not understand.
 - AMF runs a hot-swappable WASM applet to verify AI-agent metadata.
 
-Run:
+## Running the Demo
+
+Since UDR, Intermediate NF, and AMF are 3 independent processes, you should run them in separate terminals:
+
+### Step 1: Start the services (in 3 separate terminals)
+
+1. **Start UDR (port 8081)**:
+   ```bash
+   cargo run --bin udr
+   ```
+2. **Start Intermediate NF (port 8082)**:
+   ```bash
+   cargo run --bin intermediate_nf
+   ```
+3. **Start AMF (port 8083)**:
+   ```bash
+   cargo run --bin amf
+   ```
+
+### Step 2: Run the Orchestrator Client Trigger
+
+In a 4th terminal, run the orchestrator trigger client command:
 
 ```bash
 cargo run -- --scenario rel22-vendor-pass --config configs/rel22.yaml
 ```
 
-Useful scenarios:
+Useful scenarios to pass to the orchestrator:
 
+- `strict-breaks` (runs locally, no servers needed)
+- `rel21-pass` (requires servers)
+- `rel22-vendor-pass` (requires servers)
+- `vendor-mismatch` (requires servers)
+
+Examples:
 ```bash
 cargo run -- --scenario strict-breaks
 cargo run -- --scenario rel21-pass --config configs/rel21.yaml

@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio, Child};
 use std::net::{TcpStream, Shutdown};
 use std::io::{Read, Write};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use serde_json::json;
 
@@ -17,7 +16,7 @@ use programmable_parameter_demo::types::{
 const TRIGGER_UE_REGISTRATION: &str = "UE_REGISTRATION";
 
 #[derive(Parser, Debug)]
-#[command(about = "Runnable demo for 3GPP-style programmable parameters")]
+#[command(about = "Runnable client trigger for 3GPP-style programmable parameters")]
 struct Cli {
     #[arg(long, value_enum, default_value_t = Scenario::Rel22VendorPass)]
     scenario: Scenario,
@@ -45,20 +44,6 @@ impl DemoReport {
     }
 }
 
-struct ServerGuard {
-    udr: Child,
-    inf: Child,
-    amf: Child,
-}
-
-impl Drop for ServerGuard {
-    fn drop(&mut self) {
-        let _ = self.udr.kill();
-        let _ = self.inf.kill();
-        let _ = self.amf.kill();
-    }
-}
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let report = run_demo(cli.scenario, &cli.config)?;
@@ -71,59 +56,12 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
         return strict_schema_demo();
     }
 
-    // 1. Build all binary targets to make sure they are up-to-date
-    println!("Building network function binaries...");
-    let status = Command::new("cargo")
-        .args(["build", "--bins"])
-        .status()
-        .context("Failed to run cargo build")?;
-    if !status.success() {
-        bail!("Failed to compile binaries");
-    }
-
-    let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
-
-    // 2. Start the UDR, Intermediate NF, and AMF servers in the background
-    let udr = Command::new(debug_dir.join("udr"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("Failed to spawn UDR server")?;
-
-    let inf = Command::new(debug_dir.join("intermediate_nf"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("Failed to spawn Intermediate NF server")?;
-
-    let amf = Command::new(debug_dir.join("amf"))
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .context("Failed to spawn AMF server")?;
-
-    // Create a guard to ensure child processes are killed even on early exit/panic
-    let _guard = ServerGuard { udr, inf, amf };
-
-    // 3. Wait for the AMF server (port 8083) to become active
-    let mut connected = false;
-    for _ in 0..100 {
-        if TcpStream::connect("127.0.0.1:8083").is_ok() {
-            connected = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
-    if !connected {
-        bail!("Failed to connect to AMF server on port 8083");
-    }
-
-    // 4. Load config and select route
+    // 1. Load config and select route
     let config = load_config(config_path)?;
     let route = select_route(&config, TRIGGER_UE_REGISTRATION)
         .ok_or_else(|| anyhow!("no route configured for trigger {TRIGGER_UE_REGISTRATION}"))?;
 
-    // 5. Generate registration claims (acting as the registering UE)
+    // 2. Generate registration claims (acting as the registering UE)
     let vendor_claim = match scenario {
         Scenario::VendorMismatch => "Manufacturer-Y",
         Scenario::Rel21Pass | Scenario::Rel22VendorPass => "Manufacturer-X",
@@ -146,18 +84,19 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
         registration,
     };
 
-    // 6. Connect to AMF and send the verification request
-    let mut amf_stream = TcpStream::connect("127.0.0.1:8083")?;
+    // 3. Connect to AMF (assumed to be running on 127.0.0.1:8083)
+    let mut amf_stream = TcpStream::connect("127.0.0.1:8083")
+        .context("Could not connect to AMF server at 127.0.0.1:8083. Are the UDR, Intermediate NF, and AMF servers running?")?;
     let req_bytes = serde_json::to_vec(&amf_req)?;
     amf_stream.write_all(&req_bytes)?;
     amf_stream.shutdown(Shutdown::Write)?;
 
-    // 7. Read the response decision and metadata details
+    // 4. Read the response decision and metadata details
     let mut resp_bytes = Vec::new();
     amf_stream.read_to_end(&mut resp_bytes)?;
     let amf_resp: AmfResponse = serde_json::from_slice(&resp_bytes)?;
 
-    // 8. Format lines for output
+    // 5. Format lines for output
     let mut lines = Vec::new();
     lines.push(format!(
         "1. UDR emits subscription metadata keys: {:?}",
@@ -238,9 +177,66 @@ fn select_route<'a>(config: &'a RoutingConfig, trigger: &str) -> Option<&'a Rout
 mod tests {
     use super::*;
     use std::sync::Mutex;
+    use std::process::{Command, Stdio, Child};
 
     // Mutex to ensure tests running on local network ports are serialized and do not conflict
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
+
+    struct ServerGuard {
+        udr: Child,
+        inf: Child,
+        amf: Child,
+    }
+
+    impl Drop for ServerGuard {
+        fn drop(&mut self) {
+            let _ = self.udr.kill();
+            let _ = self.inf.kill();
+            let _ = self.amf.kill();
+        }
+    }
+
+    fn start_test_servers() -> ServerGuard {
+        // Compile all network function binaries
+        let status = Command::new("cargo")
+            .args(["build", "--bins"])
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
+
+        let udr = Command::new(debug_dir.join("udr"))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let inf = Command::new(debug_dir.join("intermediate_nf"))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+
+        let amf = Command::new(debug_dir.join("amf"))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+
+        // Wait for port 8083 (AMF) to bind
+        let mut connected = false;
+        for _ in 0..100 {
+            if TcpStream::connect("127.0.0.1:8083").is_ok() {
+                connected = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(connected, "AMF server failed to bind to port 8083 under test");
+
+        ServerGuard { udr, inf, amf }
+    }
 
     #[test]
     fn strict_schema_rejects_new_inline_vendor() {
@@ -256,8 +252,6 @@ mod tests {
     fn programmable_forwarding_preserves_unknown_vendor() {
         let _lock = TEST_MUTEX.lock().unwrap();
         
-        // Connect to UDR directly to get generated data
-        println!("Building network function binaries...");
         let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
         let _ = Command::new("cargo").args(["build", "--bins"]).status().unwrap();
         
@@ -268,7 +262,7 @@ mod tests {
             .unwrap();
         
         let mut udr_connected = false;
-        for _ in 0..50 {
+        for _ in 0..100 {
             if TcpStream::connect("127.0.0.1:8081").is_ok() {
                 udr_connected = true;
                 break;
@@ -298,6 +292,7 @@ mod tests {
     #[test]
     fn rel21_applet_allows_identity_without_vendor() {
         let _lock = TEST_MUTEX.lock().unwrap();
+        let _guard = start_test_servers();
         let decision = run_scenario_with_config(Scenario::Rel21Pass, "configs/rel21.yaml");
         assert_eq!(decision, Decision::Allow);
     }
@@ -305,6 +300,7 @@ mod tests {
     #[test]
     fn rel22_applet_allows_vendor_without_intermediate_change() {
         let _lock = TEST_MUTEX.lock().unwrap();
+        let _guard = start_test_servers();
         let decision = run_scenario_with_config(Scenario::Rel22VendorPass, "configs/rel22.yaml");
         assert_eq!(decision, Decision::Allow);
     }
@@ -312,6 +308,7 @@ mod tests {
     #[test]
     fn rel22_applet_limits_vendor_mismatch() {
         let _lock = TEST_MUTEX.lock().unwrap();
+        let _guard = start_test_servers();
         let decision = run_scenario_with_config(Scenario::VendorMismatch, "configs/rel22.yaml");
         assert_eq!(decision, Decision::LimitAccess);
     }
