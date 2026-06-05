@@ -2,6 +2,8 @@
 name = "programmable-parameter-demo"
 version = "0.1.0"
 edition = "2021"
+default-run = "programmable-parameter-demo"
+
 
 [dependencies]
 anyhow = "1"

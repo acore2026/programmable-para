@@ -4,6 +4,15 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use anyhow::{Result, bail};
+use clap::ValueEnum;
+
+#[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
+pub enum Scenario {
+    StrictBreaks,
+    Rel21Pass,
+    Rel22VendorPass,
+    VendorMismatch,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionData {
@@ -28,7 +37,7 @@ pub struct StrictRel21Subscription {
     pub trust_level: String,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Decision {
     Allow = 0,
@@ -57,12 +66,12 @@ impl fmt::Display for Decision {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RoutingConfig {
     pub routes: Vec<Route>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Route {
     pub trigger: String,
     pub priority: u32,
@@ -75,4 +84,23 @@ pub struct HostState {
     pub metadata: BTreeMap<String, Value>,
     pub ue_claims: BTreeMap<String, Value>,
     pub action_on_mismatch: Decision,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UdrResponse {
+    pub subscription: SubscriptionData,
+    pub registration: UeRegistration,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AmfRequest {
+    pub scenario: Scenario,
+    pub route: Route,
+    pub registration: UeRegistration,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AmfResponse {
+    pub decision: Decision,
+    pub subscription: SubscriptionData,
 }
