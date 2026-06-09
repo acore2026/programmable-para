@@ -1,24 +1,15 @@
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use anyhow::{anyhow, Context, Result};
-use clap::Parser;
+use anyhow::{Context, Result};
 use serde_json::json;
 
 use programmable_parameter_demo::types::{
-    Decision, Route, RoutingConfig, UeRegistration, SubscriptionData, PushPayload
+    Decision, Route, UeRegistration, SubscriptionData, PushPayload
 };
 use programmable_parameter_demo::net::send_request_and_get_response;
 
 const TRIGGER_UE_REGISTRATION: &str = "UE_REGISTRATION";
-
-#[derive(Parser, Debug)]
-#[command(about = "Unified Data Repository (UDR) process & client trigger")]
-struct Cli {
-    #[arg(long, default_value = "configs/rel22.yaml")]
-    config: PathBuf,
-}
 
 #[derive(Debug)]
 struct DemoReport {
@@ -38,17 +29,19 @@ impl DemoReport {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
-    let report = run_demo(&cli.config)?;
+    let report = run_demo()?;
     report.print();
     Ok(())
 }
 
-fn run_demo(config_path: &Path) -> Result<DemoReport> {
-    // 1. Load config and select route (simulating subscriber verificationLogic settings in UDR)
-    let config = load_config(config_path)?;
-    let route = select_route(&config, TRIGGER_UE_REGISTRATION)
-        .ok_or_else(|| anyhow!("no route configured for trigger {TRIGGER_UE_REGISTRATION}"))?;
+fn run_demo() -> Result<DemoReport> {
+    // 1. Define the static route for subscriber verification logic
+    let route = Route {
+        trigger: TRIGGER_UE_REGISTRATION.to_string(),
+        priority: 20,
+        applet_path: PathBuf::from("applets/rel22_vendor.wat"),
+        action_on_mismatch: Decision::LimitAccess,
+    };
 
     // 2. UDR generates the subscriber subscription data and UE claims
     let (subscription, registration) = udr_emit_and_ue_register()?;
@@ -121,30 +114,6 @@ fn udr_emit_and_ue_register() -> Result<(SubscriptionData, UeRegistration)> {
     Ok((subscription, registration))
 }
 
-fn load_config(path: &Path) -> Result<RoutingConfig> {
-    let body = fs::read_to_string(path)
-        .with_context(|| format!("failed to read routing config {}", path.display()))?;
-    let mut config: RoutingConfig = serde_yaml::from_str(&body)
-        .with_context(|| format!("failed to parse routing config {}", path.display()))?;
-    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
-
-    for route in &mut config.routes {
-        if route.applet_path.is_relative() {
-            route.applet_path = base_dir.join(&route.applet_path);
-        }
-    }
-
-    Ok(config)
-}
-
-fn select_route<'a>(config: &'a RoutingConfig, trigger: &str) -> Option<&'a Route> {
-    config
-        .routes
-        .iter()
-        .filter(|route| route.trigger == trigger)
-        .max_by_key(|route| route.priority)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,7 +144,7 @@ mod tests {
             .unwrap();
         assert!(status.success());
 
-        let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
+        let debug_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
 
         let inf = Command::new(debug_dir.join("intermediate_nf"))
             .stdout(Stdio::null())
@@ -222,15 +191,7 @@ mod tests {
     fn rel22_applet_allows_vendor_without_intermediate_change() {
         let _lock = TEST_MUTEX.lock().unwrap();
         let _guard = start_test_servers();
-        let decision = run_scenario_with_config("configs/rel22.yaml");
+        let decision = run_demo().unwrap().decision.unwrap();
         assert_eq!(decision, Decision::Allow);
-    }
-
-    fn run_scenario_with_config(relative_config: &str) -> Decision {
-        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        run_demo(&root.join(relative_config))
-            .unwrap()
-            .decision
-            .unwrap()
     }
 }

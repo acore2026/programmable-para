@@ -16,4 +16,4 @@ target/debug/amf > /dev/null 2>&1 &
 sleep 1.5
 
 echo "Triggering UDR client flow..."
-cargo run -- --config configs/rel22.yaml
+cargo run

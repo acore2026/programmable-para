@@ -1,5 +1,0 @@
-routes:
-  - trigger: UE_REGISTRATION
-    priority: 20
-    applet_path: ../applets/rel22_vendor.wat
-    action_on_mismatch: LIMIT_ACCESS

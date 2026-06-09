@@ -32,7 +32,7 @@ If you prefer to run the components manually:
    ```
 3. **Terminal 3**: Run the UDR client trigger:
    ```bash
-   cargo run -- --config configs/rel22.yaml
+   cargo run
    ```
 
 The dynamic upgrade verification checks the AI agent ID, trust level, and vendor dynamic parameter, returning the authorization decision `ALLOW` if they match.
@@ -52,7 +52,6 @@ sequenceDiagram
     participant WASM as WASM VM (Applet Host)
 
     User->>Main: Runs simulation scenario
-    Main->>Main: Load yaml config file from configs directory
     Main->>UDR: Request registration payload
     UDR-->>Main: Return Subscription Data (with metadata) & UE claims
 

@@ -47,11 +47,6 @@ impl fmt::Display for Decision {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct RoutingConfig {
-    pub routes: Vec<Route>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Route {
     pub trigger: String,
