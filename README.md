@@ -47,8 +47,11 @@ sequenceDiagram
     actor UE as User Equipment (UE)
     participant UDR as UDR
     participant INF as Intermediate NF
+    
+    box LightGray Co-located (In-Process / Same Pod)
     participant AMF as AMF
     participant WASM as WASM
+    end
 
     rect rgb(240, 248, 255)
     Note over UDR, AMF: Phase 1: Rule Provisioning (Push)
