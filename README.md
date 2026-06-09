@@ -10,26 +10,30 @@ It simulates three network functions:
 
 ## Running the Demo
 
-Since Intermediate NF and AMF are independent background services, you should run them first, then trigger the flow via UDR:
+The easiest way to run the entire simulation is using the provided orchestrator script:
 
-### Step 1: Start the background services (in 2 separate terminals)
+```bash
+./run_demo.sh
+```
 
-1. **Start Intermediate NF (port 8082)**:
+This will compile all binaries, start the `intermediate_nf` and `amf` servers in the background, run the UDR trigger client, print the results, and automatically clean up all background processes.
+
+### Running manually in separate terminals
+
+If you prefer to run the components manually:
+
+1. **Terminal 1**: Start Intermediate NF (port 8082):
    ```bash
    cargo run --bin intermediate_nf
    ```
-2. **Start AMF (port 8083)**:
+2. **Terminal 2**: Start AMF (port 8083):
    ```bash
    cargo run --bin amf
    ```
-
-### Step 2: Run the UDR Client Trigger
-
-In a 3rd terminal, run the UDR database process to emit subscription data and trigger the flow:
-
-```bash
-cargo run -- --config configs/rel22.yaml
-```
+3. **Terminal 3**: Run the UDR client trigger:
+   ```bash
+   cargo run -- --config configs/rel22.yaml
+   ```
 
 The dynamic upgrade verification checks the AI agent ID, trust level, and vendor dynamic parameter, returning the authorization decision `ALLOW` if they match.
 
