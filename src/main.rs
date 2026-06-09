@@ -7,14 +7,14 @@ use clap::Parser;
 use serde_json::json;
 
 use programmable_parameter_demo::types::{
-    Decision, Route, RoutingConfig, UeRegistration, Scenario, AmfRequest, AmfResponse
+    Decision, Route, RoutingConfig, UeRegistration, Scenario, SubscriptionData, PushPayload
 };
 use programmable_parameter_demo::net::send_request_and_get_response;
 
 const TRIGGER_UE_REGISTRATION: &str = "UE_REGISTRATION";
 
 #[derive(Parser, Debug)]
-#[command(about = "Runnable client trigger for 3GPP-style programmable parameters")]
+#[command(about = "Unified Data Repository (UDR) process & client trigger")]
 struct Cli {
     #[arg(long, value_enum, default_value_t = Scenario::Rel22VendorPass)]
     scenario: Scenario,
@@ -50,38 +50,31 @@ fn main() -> Result<()> {
 }
 
 fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
-    // 1. Load config and select route
+    // 1. Load config and select route (simulating subscriber verificationLogic settings in UDR)
     let config = load_config(config_path)?;
     let route = select_route(&config, TRIGGER_UE_REGISTRATION)
         .ok_or_else(|| anyhow!("no route configured for trigger {TRIGGER_UE_REGISTRATION}"))?;
 
-    // 2. Generate registration claims (acting as the registering UE)
-    let registration = UeRegistration {
-        subscriber_id: "imsi-001010000000001".to_string(),
-        claims: BTreeMap::from([
-            (
-                "aiAgentId".to_string(),
-                json!("urn:3gpp:ai-agent:auto-pilot-v2"),
-            ),
-            ("vendor".to_string(), json!("Manufacturer-X")),
-        ]),
-    };
+    // 2. UDR generates the subscriber subscription data and UE claims
+    let (subscription, registration) = udr_emit_and_ue_register(scenario)?;
 
-    let amf_req = AmfRequest {
+    // 3. Wrap everything into the PushPayload
+    let payload = PushPayload {
         scenario,
-        route: route.clone(),
+        subscription: subscription.clone(),
         registration,
+        route: route.clone(),
     };
 
-    // 3. Connect to AMF (assumed to be running on 127.0.0.1:8083) and trigger request
-    let amf_resp: AmfResponse = send_request_and_get_response("127.0.0.1:8083", &amf_req)
-        .context("Could not connect to AMF server at 127.0.0.1:8083. Are the UDR, Intermediate NF, and AMF servers running?")?;
+    // 4. Connect to Intermediate NF (port 8082) and push the payload
+    let decision: Decision = send_request_and_get_response("127.0.0.1:8082", &payload)
+        .context("Could not connect to Intermediate NF at 127.0.0.1:8082. Are the Intermediate NF and AMF servers running?")?;
 
-    // 4. Format lines for output
+    // 5. Format lines for output
     let mut lines = Vec::new();
     lines.push(format!(
         "1. UDR emits subscription metadata keys: {:?}",
-        amf_resp.subscription.metadata.keys().collect::<Vec<_>>()
+        subscription.metadata.keys().collect::<Vec<_>>()
     ));
     lines.push(
         "2. Intermediate NF reads subscriber_id and slice, then forwards metadata unchanged."
@@ -100,9 +93,39 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
 
     Ok(DemoReport {
         scenario,
-        decision: Some(amf_resp.decision),
+        decision: Some(decision),
         lines,
     })
+}
+
+fn udr_emit_and_ue_register(_scenario: Scenario) -> Result<(SubscriptionData, UeRegistration)> {
+    let metadata = BTreeMap::from([
+        (
+            "aiAgentId".to_string(),
+            json!("urn:3gpp:ai-agent:auto-pilot-v2"),
+        ),
+        ("trustLevel".to_string(), json!("high")),
+        ("vendor".to_string(), json!("Manufacturer-X")),
+    ]);
+
+    let subscription = SubscriptionData {
+        subscriber_id: "imsi-001010000000001".to_string(),
+        slice: "enterprise-ai".to_string(),
+        metadata,
+    };
+
+    let registration = UeRegistration {
+        subscriber_id: subscription.subscriber_id.clone(),
+        claims: BTreeMap::from([
+            (
+                "aiAgentId".to_string(),
+                json!("urn:3gpp:ai-agent:auto-pilot-v2"),
+            ),
+            ("vendor".to_string(), json!("Manufacturer-X")),
+        ]),
+    };
+
+    Ok((subscription, registration))
 }
 
 fn load_config(path: &Path) -> Result<RoutingConfig> {
@@ -134,21 +157,18 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::process::{Command, Stdio, Child};
-    use programmable_parameter_demo::types::UdrResponse;
     use std::net::TcpStream;
 
     // Mutex to ensure tests running on local network ports are serialized and do not conflict
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
     struct ServerGuard {
-        udr: Child,
         inf: Child,
         amf: Child,
     }
 
     impl Drop for ServerGuard {
         fn drop(&mut self) {
-            let _ = self.udr.kill();
             let _ = self.inf.kill();
             let _ = self.amf.kill();
         }
@@ -164,12 +184,6 @@ mod tests {
 
         let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
 
-        let udr = Command::new(debug_dir.join("udr"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-
         let inf = Command::new(debug_dir.join("intermediate_nf"))
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -182,50 +196,31 @@ mod tests {
             .spawn()
             .unwrap();
 
-        // Wait for port 8083 (AMF) to bind
-        let mut connected = false;
+        // Wait for port 8082 (Intermediate NF) and 8083 (AMF) to bind
+        let mut inf_connected = false;
+        let mut amf_connected = false;
         for _ in 0..100 {
-            if TcpStream::connect("127.0.0.1:8083").is_ok() {
-                connected = true;
+            if !inf_connected && TcpStream::connect("127.0.0.1:8082").is_ok() {
+                inf_connected = true;
+            }
+            if !amf_connected && TcpStream::connect("127.0.0.1:8083").is_ok() {
+                amf_connected = true;
+            }
+            if inf_connected && amf_connected {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
-        assert!(connected, "AMF server failed to bind to port 8083 under test");
+        assert!(inf_connected && amf_connected, "Servers failed to bind under test");
 
-        ServerGuard { udr, inf, amf }
+        ServerGuard { inf, amf }
     }
 
     #[test]
     fn programmable_forwarding_preserves_unknown_vendor() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        
-        let debug_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("target").join("debug");
-        let _ = Command::new("cargo").args(["build", "--bins"]).status().unwrap();
-        
-        let udr = Command::new(debug_dir.join("udr"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        
-        let mut udr_connected = false;
-        for _ in 0..100 {
-            if TcpStream::connect("127.0.0.1:8081").is_ok() {
-                udr_connected = true;
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(50));
-        }
-        assert!(udr_connected);
-        
-        let udr_resp: UdrResponse = send_request_and_get_response("127.0.0.1:8081", &Scenario::Rel22VendorPass).unwrap();
-        
-        let mut udr_kill = udr;
-        let _ = udr_kill.kill();
-        
+        let (subscription, _) = udr_emit_and_ue_register(Scenario::Rel22VendorPass).unwrap();
         assert_eq!(
-            udr_resp.subscription.metadata.get("vendor"),
+            subscription.metadata.get("vendor"),
             Some(&json!("Manufacturer-X"))
         );
     }

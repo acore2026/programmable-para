@@ -1,9 +1,9 @@
 use std::net::TcpListener;
 use anyhow::Result;
 
-use programmable_parameter_demo::types::{AmfRequest, SubscriptionData, Scenario, AmfResponse};
+use programmable_parameter_demo::types::PushPayload;
 use programmable_parameter_demo::wasm::amf_verify;
-use programmable_parameter_demo::net::{read_payload, write_payload, send_request_and_get_response};
+use programmable_parameter_demo::net::{read_payload, write_payload};
 
 fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8083")?;
@@ -12,39 +12,26 @@ fn main() -> Result<()> {
     for stream in listener.incoming() {
         let mut stream = stream?;
         
-        // Read the verification request from the orchestrator client
-        let request: AmfRequest = match read_payload(&mut stream) {
-            Ok(req) => req,
+        // Read the PushPayload from Intermediate NF
+        let payload: PushPayload = match read_payload(&mut stream) {
+            Ok(p) => p,
             Err(e) => {
-                eprintln!("AMF failed to read verification request: {}", e);
+                eprintln!("AMF failed to read dynamic push payload: {}", e);
                 continue;
             }
         };
 
-        // Query the intermediate NF for subscription data
-        match query_intermediate_nf_for_subscription(request.scenario) {
-            Ok(subscription) => {
-                // Execute the verification applet (via wasmtime engine)
-                match amf_verify(&subscription, &request.registration, &request.route) {
-                    Ok(decision) => {
-                        let response = AmfResponse { decision, subscription };
-                        if let Err(e) = write_payload(&mut stream, &response) {
-                            eprintln!("AMF failed to write response: {}", e);
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("AMF error during Wasm execution: {}", e);
-                    }
+        // Execute verification using WASM engine
+        match amf_verify(&payload.subscription, &payload.registration, &payload.route) {
+            Ok(decision) => {
+                if let Err(e) = write_payload(&mut stream, &decision) {
+                    eprintln!("AMF failed to write decision response: {}", e);
                 }
             }
             Err(e) => {
-                eprintln!("AMF failed to fetch subscription data: {}", e);
+                eprintln!("AMF error during WASM execution: {}", e);
             }
         }
     }
     Ok(())
-}
-
-fn query_intermediate_nf_for_subscription(scenario: Scenario) -> Result<SubscriptionData> {
-    send_request_and_get_response("127.0.0.1:8082", &scenario)
 }

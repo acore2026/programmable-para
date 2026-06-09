@@ -74,20 +74,9 @@ pub struct HostState {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct UdrResponse {
-    pub subscription: SubscriptionData,
-    pub registration: UeRegistration,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AmfRequest {
+pub struct PushPayload {
     pub scenario: Scenario,
-    pub route: Route,
-    pub registration: UeRegistration,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AmfResponse {
-    pub decision: Decision,
     pub subscription: SubscriptionData,
+    pub registration: UeRegistration,
+    pub route: Route,
 }
