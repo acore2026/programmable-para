@@ -10,26 +10,22 @@ It simulates three network functions:
 
 ## Running the Demo
 
-Since UDR, Intermediate NF, and AMF are 3 independent processes, you should run them in separate terminals:
+Since Intermediate NF and AMF are independent background services, you should run them first, then trigger the flow via UDR:
 
-### Step 1: Start the services (in 3 separate terminals)
+### Step 1: Start the background services (in 2 separate terminals)
 
-1. **Start UDR (port 8081)**:
-   ```bash
-   cargo run --bin udr
-   ```
-2. **Start Intermediate NF (port 8082)**:
+1. **Start Intermediate NF (port 8082)**:
    ```bash
    cargo run --bin intermediate_nf
    ```
-3. **Start AMF (port 8083)**:
+2. **Start AMF (port 8083)**:
    ```bash
    cargo run --bin amf
    ```
 
-### Step 2: Run the Client Trigger
+### Step 2: Run the UDR Client Trigger
 
-In a 4th terminal, run the trigger client command:
+In a 3rd terminal, run the UDR database process to emit subscription data and trigger the flow:
 
 ```bash
 cargo run -- --scenario rel22-vendor-pass --config configs/rel22.yaml
