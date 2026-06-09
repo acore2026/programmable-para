@@ -8,10 +8,7 @@ use clap::ValueEnum;
 
 #[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Scenario {
-    StrictBreaks,
-    Rel21Pass,
     Rel22VendorPass,
-    VendorMismatch,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -25,16 +22,6 @@ pub struct SubscriptionData {
 pub struct UeRegistration {
     pub subscriber_id: String,
     pub claims: BTreeMap<String, Value>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-#[allow(dead_code)]
-pub struct StrictRel21Subscription {
-    pub subscriber_id: String,
-    pub slice: String,
-    pub ai_agent_id: String,
-    pub trust_level: String,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

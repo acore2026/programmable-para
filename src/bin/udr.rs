@@ -2,7 +2,7 @@ use std::net::TcpListener;
 use std::io::{Read, Write};
 use std::collections::BTreeMap;
 use serde_json::json;
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use programmable_parameter_demo::types::{Scenario, SubscriptionData, UeRegistration, UdrResponse};
 
@@ -45,24 +45,15 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn udr_emit_and_ue_register(scenario: Scenario) -> Result<(SubscriptionData, UeRegistration)> {
-    let vendor_claim = match scenario {
-        Scenario::VendorMismatch => "Manufacturer-Y",
-        Scenario::Rel21Pass | Scenario::Rel22VendorPass => "Manufacturer-X",
-        Scenario::StrictBreaks => bail!("strict scenario does not use metadata payloads"),
-    };
-
-    let mut metadata = BTreeMap::from([
+fn udr_emit_and_ue_register(_scenario: Scenario) -> Result<(SubscriptionData, UeRegistration)> {
+    let metadata = BTreeMap::from([
         (
             "aiAgentId".to_string(),
             json!("urn:3gpp:ai-agent:auto-pilot-v2"),
         ),
         ("trustLevel".to_string(), json!("high")),
+        ("vendor".to_string(), json!("Manufacturer-X")),
     ]);
-
-    if !matches!(scenario, Scenario::Rel21Pass) {
-        metadata.insert("vendor".to_string(), json!("Manufacturer-X"));
-    }
 
     let subscription = SubscriptionData {
         subscriber_id: "imsi-001010000000001".to_string(),
@@ -77,7 +68,7 @@ fn udr_emit_and_ue_register(scenario: Scenario) -> Result<(SubscriptionData, UeR
                 "aiAgentId".to_string(),
                 json!("urn:3gpp:ai-agent:auto-pilot-v2"),
             ),
-            ("vendor".to_string(), json!(vendor_claim)),
+            ("vendor".to_string(), json!("Manufacturer-X")),
         ]),
     };
 

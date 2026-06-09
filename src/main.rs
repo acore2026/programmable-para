@@ -9,8 +9,7 @@ use clap::Parser;
 use serde_json::json;
 
 use programmable_parameter_demo::types::{
-    Decision, Route, RoutingConfig, StrictRel21Subscription,
-    UeRegistration, Scenario, AmfRequest, AmfResponse
+    Decision, Route, RoutingConfig, UeRegistration, Scenario, AmfRequest, AmfResponse
 };
 
 const TRIGGER_UE_REGISTRATION: &str = "UE_REGISTRATION";
@@ -52,21 +51,12 @@ fn main() -> Result<()> {
 }
 
 fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
-    if matches!(scenario, Scenario::StrictBreaks) {
-        return strict_schema_demo();
-    }
-
     // 1. Load config and select route
     let config = load_config(config_path)?;
     let route = select_route(&config, TRIGGER_UE_REGISTRATION)
         .ok_or_else(|| anyhow!("no route configured for trigger {TRIGGER_UE_REGISTRATION}"))?;
 
     // 2. Generate registration claims (acting as the registering UE)
-    let vendor_claim = match scenario {
-        Scenario::VendorMismatch => "Manufacturer-Y",
-        Scenario::Rel21Pass | Scenario::Rel22VendorPass => "Manufacturer-X",
-        _ => unreachable!(),
-    };
     let registration = UeRegistration {
         subscriber_id: "imsi-001010000000001".to_string(),
         claims: BTreeMap::from([
@@ -74,7 +64,7 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
                 "aiAgentId".to_string(),
                 json!("urn:3gpp:ai-agent:auto-pilot-v2"),
             ),
-            ("vendor".to_string(), json!(vendor_claim)),
+            ("vendor".to_string(), json!("Manufacturer-X")),
         ]),
     };
 
@@ -121,31 +111,6 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
         scenario,
         decision: Some(amf_resp.decision),
         lines,
-    })
-}
-
-fn strict_schema_demo() -> Result<DemoReport> {
-    let rel22_inline_payload = json!({
-        "subscriber_id": "imsi-001010000000001",
-        "slice": "enterprise-ai",
-        "ai_agent_id": "urn:3gpp:ai-agent:auto-pilot-v2",
-        "trust_level": "high",
-        "vendor": "Manufacturer-X"
-    });
-
-    let err = serde_json::from_value::<StrictRel21Subscription>(rel22_inline_payload)
-        .expect_err("strict Rel-21 schema must reject the new vendor parameter");
-
-    Ok(DemoReport {
-        scenario: Scenario::StrictBreaks,
-        decision: None,
-        lines: vec![
-            "1. UDR emits Rel-22 data with a new inline vendor parameter.".to_string(),
-            "2. A strict Rel-21 intermediate NF tries to deserialize the full payload.".to_string(),
-            format!("3. The NF fails before AMF can see the data: {err}"),
-            "Result: this is the pass-through bottleneck the proposal is trying to avoid."
-                .to_string(),
-        ],
     })
 }
 
@@ -239,16 +204,6 @@ mod tests {
     }
 
     #[test]
-    fn strict_schema_rejects_new_inline_vendor() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let report = strict_schema_demo().unwrap();
-        assert!(report
-            .lines
-            .iter()
-            .any(|line| line.contains("unknown field")));
-    }
-
-    #[test]
     fn programmable_forwarding_preserves_unknown_vendor() {
         let _lock = TEST_MUTEX.lock().unwrap();
         
@@ -290,27 +245,11 @@ mod tests {
     }
 
     #[test]
-    fn rel21_applet_allows_identity_without_vendor() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let _guard = start_test_servers();
-        let decision = run_scenario_with_config(Scenario::Rel21Pass, "configs/rel21.yaml");
-        assert_eq!(decision, Decision::Allow);
-    }
-
-    #[test]
     fn rel22_applet_allows_vendor_without_intermediate_change() {
         let _lock = TEST_MUTEX.lock().unwrap();
         let _guard = start_test_servers();
         let decision = run_scenario_with_config(Scenario::Rel22VendorPass, "configs/rel22.yaml");
         assert_eq!(decision, Decision::Allow);
-    }
-
-    #[test]
-    fn rel22_applet_limits_vendor_mismatch() {
-        let _lock = TEST_MUTEX.lock().unwrap();
-        let _guard = start_test_servers();
-        let decision = run_scenario_with_config(Scenario::VendorMismatch, "configs/rel22.yaml");
-        assert_eq!(decision, Decision::LimitAccess);
     }
 
     fn run_scenario_with_config(scenario: Scenario, relative_config: &str) -> Decision {
