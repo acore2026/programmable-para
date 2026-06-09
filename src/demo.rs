@@ -138,7 +138,7 @@ mod visuals {
 
     pub fn start() {
         println!("\n\x1b[1;36m=== Starting Programmable Parameter Flow Simulation ===\x1b[0m\n");
-        sleep(500);
+        sleep(1000);
     }
 
     pub fn step1_emit(sub: &SubscriptionData) {
@@ -146,7 +146,7 @@ mod visuals {
         println!("  - subscriber_id: {}", sub.subscriber_id);
         println!("  - slice: {}", sub.slice);
         println!("  - metadata keys: \x1b[33m{:?}\x1b[0m", sub.metadata.keys().collect::<Vec<_>>());
-        sleep(1000);
+        sleep(2000);
     }
 
     pub fn step2_send() {
@@ -156,10 +156,10 @@ mod visuals {
             let remaining = "=".repeat(14 - i);
             print!("\r  \x1b[1;36m[ UDR ]\x1b[0m {arrow}\x1b[1;33m( PushPayload )\x1b[0m{remaining}> \x1b[1;33m[ Intermediate NF ]\x1b[0m");
             let _ = std::io::stdout().flush();
-            sleep(60);
+            sleep(120);
         }
         println!("\r  \x1b[1;36m[ UDR ]\x1b[0m ================================> \x1b[1;33m[ Intermediate NF ]\x1b[0m \x1b[1;32m[DELIVERED]\x1b[0m");
-        sleep(800);
+        sleep(1500);
     }
 
     pub fn step3_forward() {
@@ -169,15 +169,15 @@ mod visuals {
             let remaining = "=".repeat(14 - i);
             print!("\r                                \x1b[1;33m[ Intermediate NF ]\x1b[0m {arrow}\x1b[1;35m( Forward Payload )\x1b[0m{remaining}> \x1b[1;35m[ AMF ]\x1b[0m");
             let _ = std::io::stdout().flush();
-            sleep(60);
+            sleep(120);
         }
         println!("\r                                \x1b[1;33m[ Intermediate NF ]\x1b[0m ================================> \x1b[1;35m[ AMF ]\x1b[0m \x1b[1;32m[DELIVERED]\x1b[0m");
-        sleep(800);
+        sleep(1500);
     }
 
     pub fn step4_wasm(applet_path: &Path) {
         println!("\n\x1b[1m[Step 4] AMF compiles WASM applet ({}) and executes verify()...\x1b[0m", applet_path.display());
-        sleep(1000);
+        sleep(2000);
     }
 
     pub fn step5_return_amf(decision: Decision) {
@@ -188,10 +188,10 @@ mod visuals {
             let remaining = "=".repeat(i);
             print!("\r                                \x1b[1;33m[ Intermediate NF ]\x1b[0m <{arrow}( {decision_str} ){remaining} \x1b[1;35m[ AMF ]\x1b[0m");
             let _ = std::io::stdout().flush();
-            sleep(60);
+            sleep(120);
         }
         println!("\r                                \x1b[1;33m[ Intermediate NF ]\x1b[0m <================================ \x1b[1;35m[ AMF ]\x1b[0m \x1b[1;32m[RETURNED]\x1b[0m");
-        sleep(800);
+        sleep(1500);
     }
 
     pub fn step6_return_udr(decision: Decision) {
@@ -202,10 +202,10 @@ mod visuals {
             let remaining = "=".repeat(i);
             print!("\r  \x1b[1;36m[ UDR ]\x1b[0m <{arrow}( {decision_str} ){remaining} \x1b[1;33m[ Intermediate NF ]\x1b[0m");
             let _ = std::io::stdout().flush();
-            sleep(60);
+            sleep(120);
         }
         println!("\r  \x1b[1;36m[ UDR ]\x1b[0m <================================ \x1b[1;33m[ Intermediate NF ]\x1b[0m \x1b[1;32m[COMPLETE]\x1b[0m\n");
-        sleep(500);
+        sleep(1000);
     }
 
     pub fn colorize_decision(decision: Decision) -> &'static str {
