@@ -45,47 +45,38 @@ The sequence of events in the simulation when executing the dynamic upgrade scen
 sequenceDiagram
     autonumber
     actor User as CLI Runner
-    participant Main as Client (main.rs)
-    participant UDR as UDR (Database)
+    participant UDR as UDR
     participant INF as Intermediate NF
-    participant AMF as AMF (Access and Mobility)
-    participant WASM as WASM VM (Applet Host)
+    participant AMF as AMF
+    participant WASM as WASM
 
-    User->>Main: Runs simulation scenario
-    Main->>UDR: Request registration payload
-    UDR-->>Main: Return Subscription Data (with metadata) & UE claims
+    User->>UDR: Runs simulation scenario
+    UDR->>UDR: Emits SubscriptionData & UE claims
 
     rect rgb(240, 248, 255)
-    Note over Main, INF: 1. Intermediate NF Forwarding
-    Main->>INF: Send Subscription Data
-    Note over INF: Reads slice and subscriber ID, but forwards metadata container opaque and unchecked.
-    INF-->>Main: Forwarded Subscription Data
+    Note over UDR, INF: 1. Intermediate NF Forwarding
+    UDR->>INF: Sends PushPayload (Subscription + Registration + Route)
+    Note over INF: Reads slice and subscriber ID, but forwards metadata container opaque and unchanged.
+    INF->>AMF: Forwards complete PushPayload
     end
 
     rect rgb(255, 245, 245)
-    Note over Main, WASM: 2. AMF Applet Verification
-    Main->>AMF: Request verification (amf_verify)
+    Note over AMF, WASM: 2. AMF Applet Verification
     AMF->>AMF: Compile WAT file to WebAssembly module
-    AMF->>AMF: Link host functions: metadata_matches_ue, metadata_is, mismatch_action
+    AMF->>AMF: Link host functions
     AMF->>WASM: Execute verify() entrypoint
     
-    WASM->>AMF: Call host function: metadata_matches_ue for aiAgentId
-    AMF-->>WASM: Return boolean matches status
+    WASM->>AMF: Call host functions (metadata check)
+    AMF-->>WASM: Return check values
     
-    WASM->>AMF: Call host function: metadata_is for trustLevel
-    AMF-->>WASM: Return boolean status
-
-    WASM->>AMF: Call host function: metadata_matches_ue for vendor
-    AMF-->>WASM: Return boolean matches status
-
-    alt Verification fails
-        WASM->>AMF: Call host function: mismatch_action()
-        AMF-->>WASM: Return configured mismatch policy (LIMIT_ACCESS / REJECT)
+    WASM-->>AMF: Return decision code
     end
 
-    WASM-->>AMF: Return decision code (0 = ALLOW, 1 = LIMIT_ACCESS, 2 = REJECT)
-    AMF-->>Main: Return Decision enum mapping
+    rect rgb(240, 255, 240)
+    Note over AMF, UDR: 3. Returning the Decision
+    AMF-->>INF: Return Decision
+    INF-->>UDR: Return Decision
     end
 
-    Main-->>User: Print scenario report and final decision
+    UDR-->>User: Print scenario report and final decision
 ```
