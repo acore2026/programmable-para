@@ -7,10 +7,10 @@ echo "Building all binaries..."
 cargo build --bins || exit 1
 
 echo "Starting Intermediate NF (port 8082) in the background..."
-target/debug/intermediate_nf > /dev/null 2>&1 &
+target/debug/intermediate_nf &
 
 echo "Starting AMF (port 8083) in the background..."
-target/debug/amf > /dev/null 2>&1 &
+target/debug/amf &
 
 # Give servers a moment to compile/bind to their ports
 sleep 1.5

@@ -51,23 +51,29 @@ pub fn run_demo() -> Result<DemoReport> {
 
     // 5. Format lines for output
     let mut lines = Vec::new();
+    lines.push("=== UDR CLIENT REPORT ===".to_string());
     lines.push(format!(
-        "1. UDR emits subscription metadata keys: {:?}",
-        subscription.metadata.keys().collect::<Vec<_>>()
+        "1. UDR emits subscription data and registration:\n  - Subscription metadata keys: {:?}\n  - Registration claims keys: {:?}",
+        subscription.metadata.keys().collect::<Vec<_>>(),
+        payload.registration.claims.keys().collect::<Vec<_>>()
+    ));
+    lines.push(format!(
+        "2. UDR serializes and pushes the complete PushPayload to Intermediate NF (port 8082):\n{}",
+        serde_json::to_string_pretty(&payload).unwrap()
     ));
     lines.push(
-        "2. Intermediate NF reads subscriber_id and slice, then forwards metadata unchanged."
+        "3. Intermediate NF reads basic fields (subscriber_id, slice) and forwards the full payload unchanged to AMF (port 8083)."
             .to_string(),
     );
     lines.push(format!(
-        "3. AMF selects route trigger={} priority={} applet={}",
+        "4. AMF selects route from the payload: trigger={} priority={} applet={}",
         route.trigger,
         route.priority,
         route.applet_path.display()
     ));
     lines.push(format!(
-        "4. WASM applet returns a host-defined decision using action_on_mismatch={}.",
-        route.action_on_mismatch
+        "5. AMF executes WASM applet dynamically and returns the authorization decision: {}",
+        decision
     ));
 
     Ok(DemoReport {
