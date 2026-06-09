@@ -44,24 +44,24 @@ The sequence of events in the simulation when executing the dynamic upgrade scen
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as CLI Runner
+    actor UE as User Equipment (UE)
     participant UDR as UDR
     participant INF as Intermediate NF
     participant AMF as AMF
     participant WASM as WASM
 
-    User->>UDR: Runs simulation scenario
-    UDR->>UDR: Emits SubscriptionData & UE claims
-
     rect rgb(240, 248, 255)
-    Note over UDR, INF: 1. Intermediate NF Forwarding
-    UDR->>INF: Sends PushPayload (Subscription + Registration + Route)
+    Note over UDR, AMF: Phase 1: Rule Provisioning (Push)
+    UDR->>INF: Push subscriber data & verification rules
     Note over INF: Reads slice and subscriber ID, but forwards metadata container opaque and unchanged.
-    INF->>AMF: Forwards complete PushPayload
+    INF->>AMF: Forward subscriber data & verification rules
+    AMF-->>INF: Acknowledge (OK)
+    INF-->>UDR: Acknowledge (OK)
     end
 
     rect rgb(255, 245, 245)
-    Note over AMF, WASM: 2. AMF Applet Verification
+    Note over UE, WASM: Phase 2: UE Registration & Local Verification
+    UE->>AMF: Request registration (with claims)
     AMF->>AMF: Compile WAT file to WebAssembly module
     AMF->>AMF: Link host functions
     AMF->>WASM: Execute verify() entrypoint
@@ -69,14 +69,7 @@ sequenceDiagram
     WASM->>AMF: Call host functions (metadata check)
     AMF-->>WASM: Return check values
     
-    WASM-->>AMF: Return decision code
+    WASM-->>AMF: Return Decision Code (ALLOW / LIMIT_ACCESS / REJECT)
+    Note over AMF: Enforces decision locally (e.g. establishes UE connection)
     end
-
-    rect rgb(240, 255, 240)
-    Note over AMF, UDR: 3. Returning the Decision
-    AMF-->>INF: Return Decision
-    INF-->>UDR: Return Decision
-    end
-
-    UDR-->>User: Print scenario report and final decision
 ```
