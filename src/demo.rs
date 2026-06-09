@@ -177,7 +177,33 @@ mod visuals {
 
     pub fn step4_wasm(applet_path: &Path) {
         println!("\n\x1b[1m[Step 4] AMF compiles WASM applet ({}) and executes verify()...\x1b[0m", applet_path.display());
-        sleep(2000);
+        
+        let spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+        // Phase 1: Compilation
+        for i in 0..10 {
+            print!("\r  \x1b[1;35m[ AMF ]\x1b[0m Compiling WebAssembly Text (.wat) to bytecode... {}", spinner[i % spinner.len()]);
+            let _ = std::io::stdout().flush();
+            sleep(120);
+        }
+        println!("\r  \x1b[1;35m[ AMF ]\x1b[0m Compiling WebAssembly Text (.wat) to bytecode... \x1b[1;32m[DONE]\x1b[0m");
+
+        // Phase 2: Linkage
+        for i in 0..10 {
+            print!("\r  \x1b[1;35m[ AMF ]\x1b[0m Linking host functions (metadata_matches_ue, metadata_is)... {}", spinner[(i + 3) % spinner.len()]);
+            let _ = std::io::stdout().flush();
+            sleep(120);
+        }
+        println!("\r  \x1b[1;35m[ AMF ]\x1b[0m Linking host functions (metadata_matches_ue, metadata_is)... \x1b[1;32m[DONE]\x1b[0m");
+
+        // Phase 3: Execution
+        for i in 0..8 {
+            print!("\r  \x1b[1;35m[ AMF ]\x1b[0m Executing verify() entrypoint inside WASM sandbox... {}", spinner[(i + 6) % spinner.len()]);
+            let _ = std::io::stdout().flush();
+            sleep(120);
+        }
+        println!("\r  \x1b[1;35m[ AMF ]\x1b[0m Executing verify() entrypoint inside WASM sandbox... \x1b[1;32m[DONE]\x1b[0m");
+        sleep(1000);
     }
 
     pub fn step5_return_amf(decision: Decision) {
