@@ -4,12 +4,6 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use anyhow::{Result, bail};
-use clap::ValueEnum;
-
-#[derive(Clone, Copy, Debug, ValueEnum, Serialize, Deserialize, PartialEq, Eq)]
-pub enum Scenario {
-    Rel22VendorPass,
-}
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionData {
@@ -75,7 +69,6 @@ pub struct HostState {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PushPayload {
-    pub scenario: Scenario,
     pub subscription: SubscriptionData,
     pub registration: UeRegistration,
     pub route: Route,

@@ -28,7 +28,7 @@ Since Intermediate NF and AMF are independent background services, you should ru
 In a 3rd terminal, run the UDR database process to emit subscription data and trigger the flow:
 
 ```bash
-cargo run -- --scenario rel22-vendor-pass --config configs/rel22.yaml
+cargo run -- --config configs/rel22.yaml
 ```
 
 The dynamic upgrade verification checks the AI agent ID, trust level, and vendor dynamic parameter, returning the authorization decision `ALLOW` if they match.
