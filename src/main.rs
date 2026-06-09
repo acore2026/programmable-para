@@ -1,8 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::net::{TcpStream, Shutdown};
-use std::io::{Read, Write};
 
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
@@ -11,6 +9,7 @@ use serde_json::json;
 use programmable_parameter_demo::types::{
     Decision, Route, RoutingConfig, UeRegistration, Scenario, AmfRequest, AmfResponse
 };
+use programmable_parameter_demo::net::send_request_and_get_response;
 
 const TRIGGER_UE_REGISTRATION: &str = "UE_REGISTRATION";
 
@@ -74,19 +73,11 @@ fn run_demo(scenario: Scenario, config_path: &Path) -> Result<DemoReport> {
         registration,
     };
 
-    // 3. Connect to AMF (assumed to be running on 127.0.0.1:8083)
-    let mut amf_stream = TcpStream::connect("127.0.0.1:8083")
+    // 3. Connect to AMF (assumed to be running on 127.0.0.1:8083) and trigger request
+    let amf_resp: AmfResponse = send_request_and_get_response("127.0.0.1:8083", &amf_req)
         .context("Could not connect to AMF server at 127.0.0.1:8083. Are the UDR, Intermediate NF, and AMF servers running?")?;
-    let req_bytes = serde_json::to_vec(&amf_req)?;
-    amf_stream.write_all(&req_bytes)?;
-    amf_stream.shutdown(Shutdown::Write)?;
 
-    // 4. Read the response decision and metadata details
-    let mut resp_bytes = Vec::new();
-    amf_stream.read_to_end(&mut resp_bytes)?;
-    let amf_resp: AmfResponse = serde_json::from_slice(&resp_bytes)?;
-
-    // 5. Format lines for output
+    // 4. Format lines for output
     let mut lines = Vec::new();
     lines.push(format!(
         "1. UDR emits subscription metadata keys: {:?}",
@@ -143,6 +134,8 @@ mod tests {
     use super::*;
     use std::sync::Mutex;
     use std::process::{Command, Stdio, Child};
+    use programmable_parameter_demo::types::UdrResponse;
+    use std::net::TcpStream;
 
     // Mutex to ensure tests running on local network ports are serialized and do not conflict
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -226,14 +219,7 @@ mod tests {
         }
         assert!(udr_connected);
         
-        let mut udr_stream = TcpStream::connect("127.0.0.1:8081").unwrap();
-        let req_bytes = serde_json::to_vec(&Scenario::Rel22VendorPass).unwrap();
-        udr_stream.write_all(&req_bytes).unwrap();
-        udr_stream.shutdown(Shutdown::Write).unwrap();
-        
-        let mut buf = Vec::new();
-        udr_stream.read_to_end(&mut buf).unwrap();
-        let udr_resp: programmable_parameter_demo::types::UdrResponse = serde_json::from_slice(&buf).unwrap();
+        let udr_resp: UdrResponse = send_request_and_get_response("127.0.0.1:8081", &Scenario::Rel22VendorPass).unwrap();
         
         let mut udr_kill = udr;
         let _ = udr_kill.kill();

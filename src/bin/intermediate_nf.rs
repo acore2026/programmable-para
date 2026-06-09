@@ -1,8 +1,8 @@
-use std::net::{TcpListener, TcpStream, Shutdown};
-use std::io::{Read, Write};
+use std::net::TcpListener;
 use anyhow::Result;
 
 use programmable_parameter_demo::types::{Scenario, SubscriptionData, UdrResponse};
+use programmable_parameter_demo::net::{read_payload, write_payload, send_request_and_get_response};
 
 fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8082")?;
@@ -10,31 +10,22 @@ fn main() -> Result<()> {
 
     for stream in listener.incoming() {
         let mut stream = stream?;
-        let mut buf = Vec::new();
         
         // Read scenario request from AMF
-        if let Err(e) = stream.read_to_end(&mut buf) {
-            eprintln!("Intermediate NF failed to read stream: {}", e);
-            continue;
-        }
-
-        let scenario: Scenario = match serde_json::from_slice(&buf) {
+        let scenario: Scenario = match read_payload(&mut stream) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("Intermediate NF failed to parse scenario request: {}", e);
+                eprintln!("Intermediate NF failed to read scenario: {}", e);
                 continue;
             }
         };
 
-        // Query UDR for subscription data
+        // Query UDR for subscription data using helper
         match query_udr_for_subscription(scenario) {
             Ok(subscription) => {
-                // Simulate intermediate NF forwarding logic:
                 let forwarded = intermediate_nf_forward(subscription);
-                if let Ok(res_bytes) = serde_json::to_vec(&forwarded) {
-                    if let Err(e) = stream.write_all(&res_bytes) {
-                        eprintln!("Intermediate NF failed to send response: {}", e);
-                    }
+                if let Err(e) = write_payload(&mut stream, &forwarded) {
+                    eprintln!("Intermediate NF failed to write response: {}", e);
                 }
             }
             Err(e) => {
@@ -46,18 +37,7 @@ fn main() -> Result<()> {
 }
 
 fn query_udr_for_subscription(scenario: Scenario) -> Result<SubscriptionData> {
-    let mut udr_stream = TcpStream::connect("127.0.0.1:8081")?;
-    
-    // Send scenario to UDR
-    let req_bytes = serde_json::to_vec(&scenario)?;
-    udr_stream.write_all(&req_bytes)?;
-    udr_stream.shutdown(Shutdown::Write)?;
-
-    // Read response from UDR
-    let mut buf = Vec::new();
-    udr_stream.read_to_end(&mut buf)?;
-    
-    let udr_response: UdrResponse = serde_json::from_slice(&buf)?;
+    let udr_response: UdrResponse = send_request_and_get_response("127.0.0.1:8081", &scenario)?;
     Ok(udr_response.subscription)
 }
 

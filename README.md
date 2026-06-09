@@ -27,25 +27,46 @@ Since UDR, Intermediate NF, and AMF are 3 independent processes, you should run 
    cargo run --bin amf
    ```
 
-### Step 2: Run the Client Trigger
+### Step 2: Run the Orchestrator Client Trigger
 
-In a 4th terminal, run the trigger client command:
+In a 4th terminal, run the orchestrator trigger client command:
 
 ```bash
 cargo run -- --scenario rel22-vendor-pass --config configs/rel22.yaml
 ```
 
-The dynamic upgrade verification checks the AI agent ID, trust level, and vendor dynamic parameter, returning the authorization decision `ALLOW` if they match.
+Useful scenarios to pass to the orchestrator:
+
+- `strict-breaks` (runs locally, no servers needed)
+- `rel21-pass` (requires servers)
+- `rel22-vendor-pass` (requires servers)
+- `vendor-mismatch` (requires servers)
+
+Examples:
+
+```bash
+cargo run -- --scenario strict-breaks
+cargo run -- --scenario rel21-pass --config configs/rel21.yaml
+cargo run -- --scenario rel22-vendor-pass --config configs/rel22.yaml
+cargo run -- --scenario vendor-mismatch --config configs/rel22.yaml
+```
+
+
+
+The important contrast is:
+
+- `strict-breaks`: a new inline parameter forces intermediate NF schema changes.
+- `rel22-vendor-pass`: the same new parameter survives as metadata, and only AMF logic changes through a WASM applet.
 
 ## Execution Flow
 
-The sequence of events in the simulation when executing the dynamic upgrade scenario:
+The sequence of events in the simulation when executing a scenario:
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor User as CLI Runner
-    participant Main as Client (main.rs)
+    participant Main as CLI/Simulation (main.rs)
     participant UDR as UDR (Database)
     participant INF as Intermediate NF
     participant AMF as AMF (Access and Mobility)
@@ -69,15 +90,17 @@ sequenceDiagram
     AMF->>AMF: Compile WAT file to WebAssembly module
     AMF->>AMF: Link host functions: metadata_matches_ue, metadata_is, mismatch_action
     AMF->>WASM: Execute verify() entrypoint
-    
+  
     WASM->>AMF: Call host function: metadata_matches_ue for aiAgentId
     AMF-->>WASM: Return boolean matches status
-    
+  
     WASM->>AMF: Call host function: metadata_is for trustLevel
     AMF-->>WASM: Return boolean status
 
-    WASM->>AMF: Call host function: metadata_matches_ue for vendor
-    AMF-->>WASM: Return boolean matches status
+    opt Rel-22 Applet Version Only
+        WASM->>AMF: Call host function: metadata_matches_ue for vendor
+        AMF-->>WASM: Return boolean matches status
+    end
 
     alt Verification fails
         WASM->>AMF: Call host function: mismatch_action()

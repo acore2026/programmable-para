@@ -1,10 +1,10 @@
 use std::net::TcpListener;
-use std::io::{Read, Write};
 use std::collections::BTreeMap;
 use serde_json::json;
 use anyhow::Result;
 
 use programmable_parameter_demo::types::{Scenario, SubscriptionData, UeRegistration, UdrResponse};
+use programmable_parameter_demo::net::{read_payload, write_payload};
 
 fn main() -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8081")?;
@@ -12,18 +12,12 @@ fn main() -> Result<()> {
 
     for stream in listener.incoming() {
         let mut stream = stream?;
-        let mut buf = Vec::new();
         
-        // Read the scenario request (read until EOF)
-        if let Err(e) = stream.read_to_end(&mut buf) {
-            eprintln!("UDR failed to read stream: {}", e);
-            continue;
-        }
-
-        let scenario: Scenario = match serde_json::from_slice(&buf) {
+        // Read scenario request from Intermediate NF using helper
+        let scenario: Scenario = match read_payload(&mut stream) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("UDR failed to parse scenario request: {}", e);
+                eprintln!("UDR failed to read/parse scenario: {}", e);
                 continue;
             }
         };
@@ -31,10 +25,8 @@ fn main() -> Result<()> {
         match udr_emit_and_ue_register(scenario) {
             Ok((subscription, registration)) => {
                 let response = UdrResponse { subscription, registration };
-                if let Ok(response_bytes) = serde_json::to_vec(&response) {
-                    if let Err(e) = stream.write_all(&response_bytes) {
-                        eprintln!("UDR failed to send response: {}", e);
-                    }
+                if let Err(e) = write_payload(&mut stream, &response) {
+                    eprintln!("UDR failed to write response: {}", e);
                 }
             }
             Err(e) => {
