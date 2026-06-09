@@ -55,9 +55,9 @@ sequenceDiagram
 
     rect rgb(240, 248, 255)
     Note over UDR, AMF: Phase 1: Rule Provisioning (Push)
-    UDR->>INF: Push subscriber data & verification rules
+    UDR->>INF: Push subscriber data & verification rules (WASM code)
     Note over INF: Reads slice and subscriber ID, but forwards metadata container opaque and unchanged.
-    INF->>AMF: Forward subscriber data & verification rules
+    INF->>AMF: Forward subscriber data & verification rules (WASM code)
     AMF-->>INF: Acknowledge (OK)
     INF-->>UDR: Acknowledge (OK)
     end
